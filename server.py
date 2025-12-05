@@ -1,39 +1,36 @@
 import asyncio
 import websockets
 import json
+import os
 
-connected_clients = {}
+PORT = int(os.getenv("PORT", 8765))
+connected = set()
 
-async def handler(websocket, path):
-    client_id = f"{websocket.remote_address}"
-    connected_clients[client_id] = websocket
-    print("Connected:", client_id)
+async def broadcast(message):
+    if connected:
+        msg = json.dumps(message)
+        await asyncio.gather(*(ws.send(msg) for ws in connected))
 
+async def handler(websocket):
+    connected.add(websocket)
+    await broadcast({"type": "online", "count": len(connected)})
     try:
-        await broadcast({"type": "online", "count": len(connected_clients)})
-
         async for message in websocket:
             data = json.loads(message)
-
             if data["type"] == "msg":
                 await broadcast({
                     "type": "msg",
-                    "user": client_id,
-                    "text": data["text"]
+                    "text": data["text"],
+                    "user": str(websocket.remote_address)
                 })
-
     except:
         pass
     finally:
-        del connected_clients[client_id]
-        await broadcast({"type": "online", "count": len(connected_clients)})
-        print("Disconnected:", client_id)
+        connected.remove(websocket)
+        await broadcast({"type": "online", "count": len(connected)})
 
-async def broadcast(message):
-    msg_str = json.dumps(message)
-    await asyncio.gather(*(ws.send(msg_str) for ws in connected_clients.values()))
+async def main():
+    async with websockets.serve(handler, "0.0.0.0", PORT):
+        await asyncio.Future()
 
-start = websockets.serve(handler, "0.0.0.0", 8765)
-print("Server running on port 8765")
-asyncio.get_event_loop().run_until_complete(start)
-asyncio.get_event_loop().run_forever()
+asyncio.run(main())
