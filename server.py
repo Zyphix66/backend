@@ -5,47 +5,39 @@ import os
 
 PORT = int(os.getenv("PORT", 8080))
 connected = {}
-usernames = set()
 
 async def broadcast(message):
     if connected:
         msg = json.dumps(message)
         await asyncio.gather(*(ws.send(msg) for ws in connected.values()))
 
-async def broadcast_users():
-    users = list(connected.keys())
-    await broadcast({"type": "users", "list": users})
-
-async def handler(websocket, path):
+async def handler(websocket):
+    user = None
     try:
         async for message in websocket:
             data = json.loads(message)
             if data.get("type") == "login":
                 user = data.get("user")
-                if not user or user in usernames:
+                if not user or user in connected:
                     await websocket.send(json.dumps({"type": "login_denied"}))
                     continue
-                usernames.add(user)
                 connected[user] = websocket
-                await broadcast({"type": "online", "count": len(connected)})
-                await broadcast_users()
+                await broadcast({"type": "online", "users": list(connected.keys())})
             elif data.get("type") == "msg":
                 user = data.get("user")
                 if user in connected:
-                    await broadcast({"type": "msg", "text": data.get("text"), "user": user})
+                    await broadcast({
+                        "type": "msg",
+                        "text": data.get("text"),
+                        "user": user,
+                        "time": data.get("time")
+                    })
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:
-        disconnected_user = None
-        for user, ws in list(connected.items()):
-            if ws == websocket:
-                disconnected_user = user
-                break
-        if disconnected_user:
-            del connected[disconnected_user]
-            usernames.discard(disconnected_user)
-            await broadcast({"type": "online", "count": len(connected)})
-            await broadcast_users()
+        if user and user in connected:
+            del connected[user]
+            await broadcast({"type": "online", "users": list(connected.keys())})
 
 async def main():
     async with websockets.serve(handler, "0.0.0.0", PORT):
