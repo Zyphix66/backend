@@ -16,7 +16,7 @@ async def broadcast_users():
     users = list(connected.keys())
     await broadcast({"type": "users", "list": users})
 
-async def handler(websocket):
+async def handler(websocket, path):
     try:
         async for message in websocket:
             data = json.loads(message)
