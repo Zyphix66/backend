@@ -12,6 +12,10 @@ async def broadcast(message):
         msg = json.dumps(message)
         await asyncio.gather(*(ws.send(msg) for ws in connected.values()))
 
+async def broadcast_users():
+    users = list(connected.keys())
+    await broadcast({"type": "users", "list": users})
+
 async def handler(websocket):
     try:
         async for message in websocket:
@@ -24,6 +28,7 @@ async def handler(websocket):
                 usernames.add(user)
                 connected[user] = websocket
                 await broadcast({"type": "online", "count": len(connected)})
+                await broadcast_users()
             elif data.get("type") == "msg":
                 user = data.get("user")
                 if user in connected:
@@ -40,6 +45,7 @@ async def handler(websocket):
             del connected[disconnected_user]
             usernames.discard(disconnected_user)
             await broadcast({"type": "online", "count": len(connected)})
+            await broadcast_users()
 
 async def main():
     async with websockets.serve(handler, "0.0.0.0", PORT):
